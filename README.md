@@ -2,6 +2,8 @@
 
 Hacker Pulse is a terminal-based user interface (TUI) application that allows you to browse the latest submissions from Hacker News. With a simple and intuitive interface, you can navigate through articles, open links in your browser, and refresh the list of submissions.
 
+![alt text](images/hacker_pulse.png)
+
 ## Table of Contents
 
 - [Hacker Pulse](#hacker-pulse)
