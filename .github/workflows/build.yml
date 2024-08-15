@@ -33,13 +33,17 @@ jobs:
       - name: Run Tests
         run: cargo test
 
-      - name: Package
+      - name: Package for Windows
+        if: matrix.os == 'windows-latest'
         run: |
           mkdir -p target/releases
-          if (${{ matrix.os }} -eq "windows-latest") 
-            Copy-Item target/release/hacker_pulse.exe target/releases/hacker_pulse-windows.exe
-          else
-            cp target/release/hacker_pulse target/releases/hacker_pulse-${{ matrix.os }}
+          Copy-Item target/release/hacker_pulse.exe target/releases/hacker_pulse-windows.exe
+
+      - name: Package for Linux and macOS
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p target/releases
+          cp target/release/hacker_pulse target/releases/hacker_pulse-${{ matrix.os }}
 
       - name: Upload Release Artifacts
         uses: actions/upload-artifact@v2
