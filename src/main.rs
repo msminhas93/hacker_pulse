@@ -1,43 +1,54 @@
 use crossterm::{
-    event::{self, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use hacker_news_tui::{fetch_hacker_news, Submission};
+use hacker_pulse::{fetch_hacker_news, Submission};
+use open;
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Rect;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use std::error::Error;
 use std::io::{stdout, Stdout};
-use std::process::Command;
 
 fn draw_tui(
     submissions: &[Submission],
     selected_index: usize,
+    current_page: usize,
+    total_pages: usize,
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
     terminal.draw(|f| {
-        let block = Block::default().title("Hacker News").borders(Borders::ALL);
-        f.render_widget(block, f.area());
 
-        // Create a list of submissions
         let items: Vec<ListItem> = submissions
             .iter()
             .map(|submission| {
-                ListItem::new(format!("{} by {}", submission.title, submission.author))
+                ListItem::new(format!("{} | ({})", submission.title, submission.link))
             })
             .collect();
 
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Submissions"))
+            .block(Block::default().borders(Borders::ALL).title("Hacker Pulse"))
             .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
             .highlight_symbol(">> ");
 
-        // Create and set the ListState
         let mut list_state = ListState::default();
-        list_state.select(Some(selected_index)); // Set the selected index
+        list_state.select(Some(selected_index));
 
-        f.render_stateful_widget(list, f.area(), &mut list_state);
+        // Render the list in the available space, leaving the last two lines for pagination and tooltip
+        let list_area = Rect::new(0, 0, f.area().width, f.area().height - 2);
+        f.render_stateful_widget(list, list_area, &mut list_state);
+
+        // Render the pagination info in the second-to-last line
+        let footer_info = format!("Page {} of {} | ↑↓: Navigate | →: Open link | r: Refresh | n: Next Page | p: Prev Page | Esc/q: Quit", current_page, total_pages);
+        let footer_paragraph = Paragraph::new(footer_info)
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Center);
+        f.render_widget(
+            footer_paragraph,
+            Rect::new(0, f.area().height - 2, f.area().width, 1),
+        );
     })?;
     Ok(())
 }
@@ -50,51 +61,69 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Fetch submissions and handle errors
-    let mut submissions = fetch_hacker_news().unwrap_or_else(|err| {
-        eprintln!("Error fetching Hacker News: {}", err);
-        Vec::new() // Return an empty vector on error
-    });
+    // Enable mouse capture
+    crossterm::execute!(std::io::stdout(), EnableMouseCapture)?;
 
+    let mut current_page = 1;
     let mut selected_index = 0;
 
-    loop {
-        draw_tui(&submissions[..], selected_index, &mut terminal)?;
+    // Fetch the first page of submissions
+    let mut page = fetch_hacker_news(current_page)?;
 
-        // Check for user input
-        if event::poll(std::time::Duration::from_millis(100))? {
+    loop {
+        draw_tui(
+            &page.submissions[..],
+            selected_index,
+            page.current_page,
+            page.total_pages,
+            &mut terminal,
+        )?;
+
+        // Handle user input
+        if event::poll(std::time::Duration::from_millis(500))? {
             if let event::Event::Key(key_event) = event::read()? {
                 match key_event.code {
-                    KeyCode::Esc => break, // Exit on Esc key
-                    KeyCode::Down => {
-                        selected_index += 1;
-                        if selected_index >= submissions.len() {
-                            selected_index = submissions.len().saturating_sub(1);
-                            // Prevent going out of bounds
+                    KeyCode::Right => {
+                        // Open the link in the browser
+                        if let Some(article) = page.submissions.get(selected_index) {
+                            if let Err(e) = open::that(&article.link) {
+                                eprintln!("Failed to open link: {}", e);
+                            }
                         }
                     }
+                    KeyCode::Down => {
+                        // Move down the list
+                        selected_index = (selected_index + 1).min(page.submissions.len() - 1);
+                    }
                     KeyCode::Up => {
+                        // Move up the list
                         if selected_index > 0 {
                             selected_index -= 1;
                         }
                     }
-                    KeyCode::Enter => {
-                        if let Some(link) = submissions.get(selected_index).map(|s| &s.link) {
-                            if !link.is_empty() {
-                                // Open the link in the default web browser
-                                if let Err(e) = Command::new("xdg-open").arg(link).spawn() {
-                                    eprintln!("Failed to open link: {}", e);
-                                }
-                            }
-                        }
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        // Exit the application
+                        break;
                     }
                     KeyCode::Char('r') => {
-                        // Refresh submissions
-                        let new_submissions = fetch_hacker_news();
-                        if let Ok(subs) = new_submissions {
-                            submissions = subs;
-                        } else {
-                            eprintln!("Failed to refresh submissions.");
+                        // Refresh the submissions
+                        page = fetch_hacker_news(current_page)?;
+                        selected_index = 0;
+                    }
+                    KeyCode::Char('n') => {
+                        // Go to next page
+                        if current_page < page.total_pages {
+                            current_page += 1;
+                            page = fetch_hacker_news(current_page)?;
+                            selected_index = 0;
+                        }
+                    }
+                    KeyCode::Char('p') => {
+                        // Go to previous page
+                        if current_page > 1 {
+                            current_page -= 1;
+                            page = fetch_hacker_news(current_page)?;
+                            selected_index = 0;
                         }
                     }
                     _ => {}
@@ -106,5 +135,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Clean up
     terminal::disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+
+    // Disable mouse capture
+    crossterm::execute!(std::io::stdout(), DisableMouseCapture)?;
+
     Ok(())
 }

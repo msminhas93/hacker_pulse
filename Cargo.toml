@@ -1,10 +1,11 @@
 [package]
-name = "hacker_news_tui"
+name = "hacker_pulse"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 crossterm = "0.28.1"
+open = "5.3.0"
 ratatui = "0.28.0"
 reqwest = { version = "0.12.5", features = ["blocking", "json"] }
 scraper = "0.20.0"

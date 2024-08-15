@@ -1,0 +1,48 @@
+name: Build Hacker Pulse
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable] # Use the latest stable version of Rust
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }} # Use the stable toolchain
+          override: true
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Run Tests
+        run: cargo test
+
+      - name: Package
+        run: |
+          mkdir -p target/releases
+          if (${{ matrix.os }} -eq "windows-latest") 
+            Copy-Item target/release/hacker_pulse.exe target/releases/hacker_pulse-windows.exe
+          else
+            cp target/release/hacker_pulse target/releases/hacker_pulse-${{ matrix.os }}
+
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: hacker_pulse
+          path: target/releases/

@@ -5,13 +5,19 @@ use std::error::Error;
 #[derive(Debug)]
 pub struct Submission {
     pub title: String,
-    pub author: String,
     pub link: String,
 }
+// Struct to hold page data
+pub struct Page {
+    pub submissions: Vec<Submission>,
+    pub current_page: usize,
+    pub total_pages: usize,
+}
 
-pub fn fetch_hacker_news() -> Result<Vec<Submission>, Box<dyn Error>> {
-    let url = "https://news.ycombinator.com/";
-    let response = get(url)?.text()?;
+pub fn fetch_hacker_news(page: usize) -> Result<Page, Box<dyn Error>> {
+    // Construct the URL with pagination
+    let url = format!("https://news.ycombinator.com/news?p={}", page);
+    let response = get(&url)?.text()?;
     let document = Html::parse_document(&response);
 
     let row_selector = Selector::parse("tr.athing")?;
@@ -23,29 +29,17 @@ pub fn fetch_hacker_news() -> Result<Vec<Submission>, Box<dyn Error>> {
         if let Some(title_element) = row.select(&title_selector).next() {
             let title = title_element.inner_html();
             let link = title_element.value().attr("href").unwrap_or("").to_string();
-            // Get the next sibling row for the author
-            // if let Some(subtext_row) = row.next_sibling() {
-            //     // Ensure the sibling is a <tr> element
-            //     if subtext_row.is_element() {
-            //         let subtext_selector = Selector::parse("td.subtext > a.hnuser")?;
-            //         // Use the `select` method on the subtext row
-            //         let author_element = subtext_row.select(&subtext_selector).next();
-            //         let author = author_element.map_or("No Author".to_string(), |e| e.inner_html());
-
-            //         submissions.push(Submission {
-            //             title,
-            //             author,
-            //             link,
-            //         });
-            //     }
-            // }
-            submissions.push(Submission {
-                title,
-                author: "".to_string(),
-                link,
-            });
+            submissions.push(Submission { title, link });
         }
     }
 
-    Ok(submissions)
+    // Here you would determine the total number of pages based on your logic
+    // For example, you could set a fixed number of total pages
+    let total_pages = 10; // Placeholder for total pages; implement logic to determine this if needed
+
+    Ok(Page {
+        submissions,
+        current_page: page,
+        total_pages,
+    })
 }
