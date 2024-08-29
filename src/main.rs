@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyEventKind, Event},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -81,8 +81,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Handle user input
         if event::poll(std::time::Duration::from_millis(500))? {
-            if let event::Event::Key(key_event) = event::read()? {
-                match key_event.code {
+            if let Event::Key(KeyEvent {
+                code,
+                kind: KeyEventKind::Press,
+                ..
+            }) = event::read()?
+            {
+                match code {
                     KeyCode::Right => {
                         // Open the link in the browser
                         if let Some(article) = page.submissions.get(selected_index) {
